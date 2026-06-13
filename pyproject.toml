@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "minicode-harness"
+version = "0.1.0"
+description = "A minimal, self-built coding agent runtime"
+requires-python = ">=3.11"
+dependencies = [
+  "openai>=1.30",
+  "pydantic>=1.10,<2.0",
+  "sqlalchemy>=2.0",
+  "rich>=13.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+minicode = "minicode.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["minicode*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
