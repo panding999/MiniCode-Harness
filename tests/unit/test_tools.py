@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from minicode.permissions.guard import PermissionGuard
-from minicode.tools.coding import ListFilesTool, ReadFileTool, RunCommandTool, SearchCodeTool, WriteFileTool
+from minicode.tools.coding import DeleteFileTool, ListFilesTool, ReadFileTool, RunCommandTool, SearchCodeTool, WriteFileTool
 from minicode.tools.base import ToolContext
 
 
@@ -45,3 +45,20 @@ def test_run_command_allows_pytest_and_rejects_shell(tmp_path: Path):
     denied = RunCommandTool().execute({"argv": ["rm", "-rf", "."], "timeout_seconds": 5}, ctx)
     assert ok.success and "Python" in ok.output
     assert not denied.success
+
+
+def test_delete_file_only_deletes_single_workspace_file(tmp_path: Path):
+    target = tmp_path / "remove-me.txt"
+    target.write_text("temporary", encoding="utf-8")
+    directory = tmp_path / "keep-directory"
+    directory.mkdir()
+
+    deleted = DeleteFileTool().execute({"path": "remove-me.txt"}, context(tmp_path))
+    directory_result = DeleteFileTool().execute({"path": "keep-directory"}, context(tmp_path))
+    missing_result = DeleteFileTool().execute({"path": "missing.txt"}, context(tmp_path))
+
+    assert deleted.success
+    assert not target.exists()
+    assert not directory_result.success
+    assert directory.exists()
+    assert not missing_result.success

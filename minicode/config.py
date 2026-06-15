@@ -52,5 +52,18 @@ class Settings:
     db_url: str = os.getenv("MINICODE_DB_URL", "sqlite:///minicode.db")
     max_steps: int = int(os.getenv("MAX_STEPS", "8"))
     repeat_limit: int = 3
-    message_threshold: int = 30
-    keep_messages: int = 12
+    context_char_limit: int = int(os.getenv("CONTEXT_CHAR_LIMIT", "12000"))
+    context_keep_messages: int = int(os.getenv("CONTEXT_KEEP_MESSAGES", "12"))
+    context_full_tool_results: int = int(os.getenv("CONTEXT_FULL_TOOL_RESULTS", "5"))
+    command_executor: str = os.getenv("COMMAND_EXECUTOR", "local")
+    command_env_allowlist: tuple[str, ...] = tuple(
+        item.strip() for item in os.getenv(
+            "COMMAND_ENV_ALLOWLIST",
+            "PATH,PATHEXT,SYSTEMROOT,WINDIR,COMSPEC,TEMP,TMP",
+        ).split(",") if item.strip()
+    )
+    command_output_limit: int = int(os.getenv("COMMAND_OUTPUT_LIMIT", "30000"))
+    docker_image: str = os.getenv("DOCKER_IMAGE", "python:3.12-slim")
+    docker_cpus: str = os.getenv("DOCKER_CPUS", "1.0")
+    docker_memory: str = os.getenv("DOCKER_MEMORY", "512m")
+    docker_pids_limit: int = int(os.getenv("DOCKER_PIDS_LIMIT", "128"))
