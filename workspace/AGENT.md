@@ -1,13 +1,13 @@
-# Demo Workspace
+# 演示 Workspace
 
-This workspace contains a small Python calculator used to demonstrate MiniCode Harness.
+此 Workspace 包含一个小型 Python 计算器，用于演示 MiniCode Harness。
 
-## Commands
+## 命令
 
-- Run tests: `pytest -q`
+- 运行测试：`pytest -q`
 
-## Rules
+## 规则
 
-- Read relevant files before editing.
-- Keep changes narrowly scoped.
-- Do not modify tests merely to hide failures.
+- 修改前先读取相关文件。
+- 修改范围应尽量小且聚焦。
+- 不得仅为了隐藏失败而修改测试。

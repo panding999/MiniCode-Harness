@@ -23,60 +23,103 @@ class AgentRuntime:
         session = self.repositories.sessions.get_or_create(session_id, str(workspace))
         self.repositories.messages.add(session_id, "user", user_input)
         task = self.repositories.tasks.get_or_create(session_id, user_input)
+        self.compactor.compact_if_needed(session_id)
         run_id = self.repositories.traces.start_run(session_id)
         tool_context = ToolContext(workspace, set(task.files_read or []))
         repeated = Counter()
+        step = 0
 
-        for step in range(1, self.max_steps + 1):
-            session = self.repositories.sessions.get(session_id)
-            recent = [_message_dict(row) for row in self.repositories.messages.list_recent(session_id)]
-            context = self.context_builder.build(workspace, task, session.summary, recent)
-            emit(RuntimeEvent("thinking_started", step=step))
-            streamed = False
+        try:
+            for step in range(1, self.max_steps + 1):
+                session = self.repositories.sessions.get(session_id)
+                recent = self.compactor.context_messages(session_id)
+                summary = self.compactor.summary_for_context(session_id)
+                context = self.context_builder.build(workspace, task, summary, recent)
+                emit(RuntimeEvent("thinking_started", step=step))
+                streamed = False
 
-            def on_delta(text):
-                nonlocal streamed
-                streamed = True
-                emit(RuntimeEvent("text_delta", step=step, text=text))
+                def on_delta(text):
+                    nonlocal streamed
+                    streamed = True
+                    emit(RuntimeEvent("text_delta", step=step, text=text))
 
-            response = self.llm.complete(context, self.registry.schemas(), on_text_delta=on_delta)
-            self.repositories.traces.add(run_id, session_id, step, "llm_response", success=True, output_summary=response.text[:500])
+                response = self.llm.complete(context, self.registry.schemas(), on_text_delta=on_delta)
+                self.repositories.traces.add(run_id, session_id, step, "llm_response", success=True, output_summary=response.text[:500])
 
-            if response.is_final:
-                if response.text and not streamed:
-                    emit(RuntimeEvent("text_delta", step=step, text=response.text))
-                status = response.task_status or ("paused" if _requests_pause(user_input) else "completed")
-                next_action = response.next_action or (response.text[:500] if status == "paused" else "")
-                self.repositories.messages.add(session_id, "assistant", response.text)
-                self.repositories.tasks.update(task.id, status=status, summary=response.text[:1000], next_action=next_action)
-                self.repositories.traces.finish(run_id, status)
-                self.compactor.compact_if_needed(session_id)
-                emit(RuntimeEvent("run_finished", step=step, text=response.text))
-                return AgentResult(response.text, status, run_id)
+                if response.is_final:
+                    if response.text and not streamed:
+                        emit(RuntimeEvent("text_delta", step=step, text=response.text))
+                    status = response.task_status or ("paused" if _requests_pause(user_input) else "completed")
+                    next_action = response.next_action or (response.text[:500] if status == "paused" else "")
+                    self.repositories.messages.add(session_id, "assistant", response.text)
+                    self.repositories.tasks.update(task.id, status=status, summary=response.text[:1000], next_action=next_action)
+                    self.repositories.traces.finish(run_id, status)
+                    self.compactor.compact_if_needed(session_id)
+                    emit(RuntimeEvent("run_finished", step=step, text=response.text))
+                    return AgentResult(response.text, status, run_id)
 
-            self.repositories.messages.add(
-                session_id,
-                "assistant",
-                response.text,
-                extra_data={"tool_calls": [_tool_call_dict(call) for call in response.tool_calls]},
-            )
-            for call in response.tool_calls:
-                emit(RuntimeEvent("tool_started", step=step, tool_name=call.name, arguments=call.arguments))
-                signature = f"{call.name}:{json.dumps(call.arguments, sort_keys=True)}"
-                repeated[signature] += 1
-                if repeated[signature] >= self.repeat_limit:
-                    return self._pause(task.id, run_id, session_id, step, "Detected repeated tool call")
-                result = self.dispatcher.dispatch(call, tool_context)
-                emit(RuntimeEvent("tool_finished", step=step, tool_name=call.name, text=result.output_summary, success=result.success))
-                self.repositories.messages.add(session_id, "tool", result.output or result.error, call.id)
-                self.repositories.traces.add(
-                    run_id, session_id, step, "tool_result", tool_name=call.name,
-                    arguments=call.arguments, success=result.success, output_summary=result.output_summary,
-                    error=result.error, duration_ms=result.duration_ms,
+                self.repositories.messages.add(
+                    session_id,
+                    "assistant",
+                    response.text,
+                    extra_data={"tool_calls": [_tool_call_dict(call) for call in response.tool_calls]},
                 )
-                task = self._record_task_result(task.id, task, call.name, result, tool_context)
+                for call in response.tool_calls:
+                    emit(RuntimeEvent("tool_started", step=step, tool_name=call.name, arguments=call.arguments))
+                    signature = f"{call.name}:{json.dumps(call.arguments, sort_keys=True)}"
+                    repeated[signature] += 1
+                    if repeated[signature] >= self.repeat_limit:
+                        return self._pause(task.id, run_id, session_id, step, "Detected repeated tool call")
+                    result = self.dispatcher.dispatch(call, tool_context)
+                    emit(RuntimeEvent("tool_finished", step=step, tool_name=call.name, text=result.output_summary, success=result.success))
+                    self.repositories.messages.add(session_id, "tool", result.output or result.error, call.id)
+                    if result.metadata.get("policy_action"):
+                        self.repositories.traces.add(
+                            run_id, session_id, step, "policy_decision", tool_name=call.name,
+                            arguments={
+                                "action": result.metadata["policy_action"],
+                                "reason": result.metadata.get("policy_reason", ""),
+                                "approved": result.metadata.get("approved"),
+                            },
+                            success=result.metadata["policy_action"] != "deny" and result.metadata.get("approved", True),
+                            output_summary=result.metadata.get("policy_reason", ""),
+                        )
+                    self.repositories.traces.add(
+                        run_id, session_id, step, "tool_result", tool_name=call.name,
+                        arguments=call.arguments, success=result.success, output_summary=result.output_summary,
+                        error=result.error, duration_ms=result.duration_ms,
+                    )
+                    task = self._record_task_result(task.id, task, call.name, result, tool_context)
+                    if (
+                        result.metadata.get("policy_action") == "require_approval"
+                        and result.metadata.get("approved") is False
+                    ):
+                        return self._pause(
+                            task.id,
+                            run_id,
+                            session_id,
+                            step,
+                            "High-risk operation was rejected by user; this run was stopped",
+                        )
+                    if result.metadata.get("policy_action") == "deny":
+                        return self._pause(
+                            task.id,
+                            run_id,
+                            session_id,
+                            step,
+                            "High-risk operation was denied by policy; this run was stopped",
+                        )
 
-        return self._pause(task.id, run_id, session_id, self.max_steps, "Maximum steps reached")
+            return self._pause(task.id, run_id, session_id, self.max_steps, "Maximum steps reached")
+        except Exception as exc:
+            reason = str(exc) or exc.__class__.__name__
+            self.repositories.tasks.update(task.id, status="failed", last_error=reason, next_action="Resolve runtime failure")
+            self.repositories.traces.add(
+                run_id, session_id, step, "run_failed",
+                success=False, output_summary=reason[:500], error=reason,
+            )
+            self.repositories.traces.finish(run_id, "failed")
+            raise
 
     def _pause(self, task_id, run_id, session_id, step, reason):
         self.repositories.tasks.update(task_id, status="paused", next_action=reason, last_error=reason)

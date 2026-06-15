@@ -37,6 +37,13 @@ class MessageRepository:
         with self.factory() as db:
             rows = list(db.scalars(select(MessageRecord).where(MessageRecord.session_id == session_id).order_by(MessageRecord.id.desc()).limit(limit)))
             return list(reversed(rows))
+    def list_after(self, session_id, message_id=0):
+        with self.factory() as db:
+            return list(db.scalars(
+                select(MessageRecord)
+                .where(MessageRecord.session_id == session_id, MessageRecord.id > message_id)
+                .order_by(MessageRecord.id)
+            ))
     def count(self, session_id):
         return len(self.list_recent(session_id, 100000))
 
@@ -76,6 +83,9 @@ class TraceRepository:
     def finish(self, run_id, status):
         with self.factory() as db:
             row = db.get(RunRecord, run_id); row.status = status; row.finished_at = datetime.utcnow(); db.commit()
+    def latest_run(self, session_id):
+        with self.factory() as db:
+            return db.scalar(select(RunRecord).where(RunRecord.session_id == session_id).order_by(RunRecord.created_at.desc()).limit(1))
     def list_for_session(self, session_id):
         with self.factory() as db:
             return list(db.scalars(select(TraceEventRecord).where(TraceEventRecord.session_id == session_id).order_by(TraceEventRecord.id)))

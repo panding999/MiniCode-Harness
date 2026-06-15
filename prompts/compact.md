@@ -1,1 +1,11 @@
-Summarize older conversation history while preserving goals, decisions, errors, file changes, commands, and test results.
+请压缩较早的对话历史，同时完整保留以下信息：
+
+- 用户目标与明确约束；
+- 已作出的关键决策；
+- 遇到的错误及其原因；
+- 已读取和修改的文件；
+- 已执行的命令；
+- 测试结果；
+- 当前任务状态与下一步行动。
+
+摘要必须基于真实历史，不得编造未发生的操作或结果。

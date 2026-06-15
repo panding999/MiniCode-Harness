@@ -20,6 +20,10 @@ AI 主要参与：
 从零实现一个最小可用 Agent，不使用现成 Agent Runtime。
 支持多轮对话、Session、原生 Function Calling、至少三个工具、
 最大步数、异常处理、Trace、真实 LLM API，以及跨轮次任务继续执行。
+
+后续增强加入了风险分级工具策略、交互式人工审批、受控 `delete_file`、本地受限与 Docker
+命令执行器，以及 Run、Task、Trace 一致的异常收尾。权限策略允许普通读写和安全命令自动执行，
+普通文件删除需要审批，敏感文件删除直接拒绝，用户拒绝或策略拒绝后会立即停止本轮以防工具绕过。
 ```
 
 实现阶段的核心约束：
@@ -49,6 +53,10 @@ Task Ledger 必须记录客观执行事实，不能只依赖聊天历史。
 - `run_command` 使用参数数组与 `shell=False`，仅允许白名单命令。
 - Rich 负责终端欢迎面板、Spinner、工具状态和流式文本显示。
 - `.env` 支持从 Workspace、用户配置目录和安装项目根目录读取。
+- 运行提示词使用中文描述行为约束，同时保留 `read_file`、`run_command`、
+  Workspace、Task Ledger 等英文技术标识，便于中文审阅且不影响工具接口识别。
+- 上下文管理采用两层渐进式压缩：先微压缩旧工具输出，再按字符预算生成累计结构化
+  摘要；SQLite 始终保留完整原始消息，具体设计参见 `HIGHLIGHTS.md`。
 
 ## 遇到的问题与解决方式
 
@@ -80,7 +88,9 @@ Task Ledger 必须记录客观执行事实，不能只依赖聊天历史。
 
 部分 Unicode 状态符号无法被 GBK 编码。
 
-解决方式：Spinner 与状态标记使用兼容的 ASCII 字符，同时保留 Rich 颜色和边框。
+解决方式：Spinner 与状态标记使用兼容的 ASCII 字符；`sessions`、`task`、`trace`
+等非交互命令统一使用安全输出函数，在当前终端编码不支持字符时进行替换，避免
+`UnicodeEncodeError` 导致命令崩溃。
 
 ### Pydantic 环境兼容
 
@@ -91,6 +101,7 @@ Task Ledger 必须记录客观执行事实，不能只依赖聊天历史。
 ## 人工验证记录
 
 - Harness 自动化测试通过；
+- 当前自动化测试共 25 个，测试目标、样例数据和验收步骤详见 `TESTING.md`；
 - Python 编译检查通过；
 - 安装后的 `minicode` 命令可运行；
 - Rich 欢迎面板和终端事件渲染已进行本地冒烟验证；

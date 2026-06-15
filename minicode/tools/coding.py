@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from minicode.permissions.guard import PermissionGuard
 from minicode.tools.base import BaseTool, RiskLevel, ToolContext, ToolResult
+from minicode.tools.executors import LocalRestrictedExecutor
 
 
 def _result(start: float, success: bool, output: str = "", error: str = "", metadata: dict | None = None):
@@ -120,6 +121,29 @@ class WriteFileTool(BaseTool):
             return _result(start, False, error=str(exc))
 
 
+class DeleteFileArgs(BaseModel):
+    path: str
+
+
+class DeleteFileTool(BaseTool):
+    name, description, risk_level, args_model = "delete_file", "Delete one workspace file", RiskLevel.WRITE, DeleteFileArgs
+
+    def execute(self, args: dict, context: ToolContext) -> ToolResult:
+        start = time.monotonic()
+        try:
+            data = _validate(self.args_model, args)
+            relative = Path(data.path).as_posix()
+            path = PermissionGuard().resolve_path(context.workspace, data.path)
+            if not path.exists():
+                return _result(start, False, error="File does not exist")
+            if not path.is_file():
+                return _result(start, False, error="Only individual files can be deleted")
+            path.unlink()
+            return _result(start, True, f"Deleted {relative}", metadata={"path": relative})
+        except Exception as exc:
+            return _result(start, False, error=str(exc))
+
+
 class RunCommandArgs(BaseModel):
     argv: list[str]
     timeout_seconds: int = Field(30, ge=1, le=120)
@@ -128,6 +152,9 @@ class RunCommandArgs(BaseModel):
 class RunCommandTool(BaseTool):
     name, description, risk_level, args_model = "run_command", "Run an allowlisted command without a shell", RiskLevel.EXECUTE, RunCommandArgs
 
+    def __init__(self, executor=None):
+        self.executor = executor or LocalRestrictedExecutor()
+
     def execute(self, args: dict, context: ToolContext) -> ToolResult:
         start = time.monotonic()
         try:
@@ -135,9 +162,14 @@ class RunCommandTool(BaseTool):
             decision = PermissionGuard().check_command(data.argv)
             if not decision.allowed:
                 return _result(start, False, error=decision.reason)
-            completed = subprocess.run(data.argv, cwd=context.workspace, shell=False, capture_output=True, text=True, timeout=data.timeout_seconds)
-            output = (completed.stdout + completed.stderr)[:30000]
-            return _result(start, completed.returncode == 0, output, "" if completed.returncode == 0 else f"exit code {completed.returncode}", {"argv": data.argv, "exit_code": completed.returncode})
+            completed = self.executor.execute(data.argv, context.workspace, data.timeout_seconds)
+            return _result(
+                start,
+                completed.returncode == 0,
+                completed.output,
+                "" if completed.returncode == 0 else f"exit code {completed.returncode}",
+                {"argv": data.argv, "exit_code": completed.returncode, "output_truncated": completed.truncated},
+            )
         except subprocess.TimeoutExpired:
             return _result(start, False, error="Command timed out")
         except Exception as exc:

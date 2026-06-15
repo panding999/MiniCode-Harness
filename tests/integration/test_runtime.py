@@ -78,3 +78,27 @@ def test_runtime_emits_thinking_tool_and_final_events(tmp_path: Path):
     ]
     assert events[1].tool_name == "list_files"
     assert events[4].text == "done"
+
+
+def test_runtime_uses_summary_and_recent_messages_after_compaction(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    llm = FakeLLMClient([LLMResponse(text="done")])
+    service = AgentService.create(
+        db_url=f"sqlite:///{tmp_path / 'state.db'}",
+        llm=llm,
+        context_char_limit=100,
+        context_keep_messages=2,
+    )
+    service.repositories.sessions.get_or_create("demo", str(workspace.resolve()))
+    service.repositories.messages.add("demo", "user", "旧目标：" + "A" * 80)
+    service.repositories.messages.add("demo", "assistant", "旧回答：" + "B" * 80)
+
+    service.run("demo", workspace, "当前问题")
+
+    request = llm.requests[0]
+    system = request[0]["content"]
+    assert "旧目标" in system
+    assert "compacted-through" not in system
+    assert all("旧目标" not in message.get("content", "") for message in request[1:])
+    assert request[-1]["content"] == "当前问题"

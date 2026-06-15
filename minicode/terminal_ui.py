@@ -1,10 +1,21 @@
+from dataclasses import dataclass
 from pathlib import Path
 
+from prompt_toolkit.application import Application
+from prompt_toolkit.formatted_text import FormattedText
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import Layout
+from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.layout.containers import Window
 from rich.console import Console, Group
-from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+
+
+@dataclass(frozen=True)
+class NewSessionRequest:
+    pass
 
 
 class TerminalUI:
@@ -78,6 +89,99 @@ class TerminalUI:
         self._stop_status()
         self.streaming = False
         self.console.print(Panel(str(error), title="请求失败", border_style="red"))
+
+    def approve_tool(self, decision, call, input_func=None) -> bool:
+        visible_arguments = {key: value for key, value in call.arguments.items() if key != "content"}
+        body = (
+            f"工具: {call.name}\n"
+            f"参数: {_compact_args(visible_arguments)}\n"
+            f"风险原因: {decision.reason}\n\n"
+            "输入 y：批准执行\n"
+            "输入 n：拒绝操作并停止本轮"
+        )
+        self.console.print(Panel(body, title="高风险操作审批", border_style="yellow"))
+        reader = input_func or self.console.input
+        while True:
+            answer = reader("是否允许执行？[y/n]: ").strip().lower()
+            if answer in {"y", "yes"}:
+                return True
+            if answer in {"n", "no"}:
+                self.console.print("[yellow]用户已拒绝该高风险操作，本轮将停止。[/]")
+                return False
+            self.console.print("[yellow]请输入 y 批准，或输入 n 拒绝。[/]")
+
+    def show_session_history(self, session, messages):
+        self._stop_status()
+        self.streaming = False
+        for message in messages:
+            if message.role not in {"user", "assistant"} or not message.content.strip():
+                continue
+            if message.role == "user":
+                self.console.print(f"\n[bold]> [/]{message.content}", markup=True, highlight=False)
+            else:
+                self.console.print("\n[bold bright_cyan]MiniCode[/]")
+                self.console.print(message.content, markup=False, highlight=False)
+
+    def show_active_session(self, model: str, session, messages):
+        self._stop_status()
+        self.streaming = False
+        self.console.clear()
+        self.show_welcome(model, Path(session.workspace), session.id)
+        self.show_session_history(session, messages)
+
+    def select_session(self, sessions, current_session_id: str, input=None, output=None):
+        entries = [NewSessionRequest(), *sessions]
+        selected_index = next(
+            (index for index, session in enumerate(entries) if getattr(session, "id", None) == current_session_id),
+            0,
+        )
+        bindings = KeyBindings()
+
+        def content():
+            lines = [
+                ("bold fg:ansicyan", f" Sessions ({selected_index + 1} of {len(entries)})\n\n"),
+            ]
+            for index, session in enumerate(entries):
+                marker = ">" if index == selected_index else " "
+                style = "bold fg:ansiblue" if index == selected_index else ""
+                if isinstance(session, NewSessionRequest):
+                    lines.append((style, f"{marker} + New session\n"))
+                    lines.append(("fg:ansibrightblack", "    在当前 Workspace 创建空白会话\n\n"))
+                    continue
+                current = "  current" if session.id == current_session_id else ""
+                lines.append((style, f"{marker} {session.id}{current}\n"))
+                lines.append(("fg:ansibrightblack", f"    {session.workspace}  {session.updated_at}\n\n"))
+            lines.append(("fg:ansibrightblack", " Up/Down move  Enter select  Esc return"))
+            return FormattedText(lines)
+
+        @bindings.add("up")
+        def move_up(event):
+            nonlocal selected_index
+            selected_index = (selected_index - 1) % len(entries)
+            event.app.invalidate()
+
+        @bindings.add("down")
+        def move_down(event):
+            nonlocal selected_index
+            selected_index = (selected_index + 1) % len(entries)
+            event.app.invalidate()
+
+        @bindings.add("enter")
+        def select(event):
+            event.app.exit(result=entries[selected_index])
+
+        @bindings.add("escape", eager=True)
+        def cancel(event):
+            event.app.exit(result=None)
+
+        app = Application(
+            layout=Layout(Window(FormattedTextControl(content), always_hide_cursor=True)),
+            key_bindings=bindings,
+            full_screen=True,
+            input=input,
+            output=output,
+        )
+        return app.run()
 
     def _stop_status(self):
         if self.status:
