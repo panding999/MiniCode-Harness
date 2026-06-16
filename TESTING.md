@@ -16,7 +16,7 @@ python -m pytest -q
 当前预期结果：
 
 ```text
-56 passed
+59 passed
 ```
 
 测试分为：
@@ -26,11 +26,11 @@ python -m pytest -q
 | Agent 运行时集成测试 | `tests/integration/test_runtime.py` | 7 | Agent Loop、工具回填、SQLite 持久化、Task Ledger 生命周期、Session 重命名、最大步数、上下文压缩、终端事件 |
 | 上下文压缩 | `tests/unit/test_compactor.py` | 2 | 原始历史保留、累计摘要、工具输出微压缩、Function Calling 配对 |
 | Coding Tools 与权限 | `tests/unit/test_tools.py` | 6 | 六个工具、路径限制、写前读取、命令白名单、受控删除 |
-| 权限策略与审批 | `tests/unit/test_policy.py`、`tests/unit/test_approval_ui.py` | 8 | 风险分级、敏感操作审批、用户拒绝语义 |
+| 权限策略与审批 | `tests/unit/test_policy.py`、`tests/unit/test_approval_ui.py` | 9 | 风险分级、敏感操作审批、用户拒绝语义、pytest 参数白名单 |
 | 命令执行隔离 | `tests/unit/test_executors.py` | 2 | 环境变量白名单、输出限制、Docker 隔离参数 |
 | Runtime 失败闭环 | `tests/integration/test_runtime_failures.py` | 5 | Run/Task/Trace 异常收尾、拒绝后禁止绕过 |
-| CLI 与 Session | `tests/unit/test_cli.py` | 12 | 默认参数、Session 新建与切换、重命名、历史恢复、GBK 安全输出 |
-| 终端界面 | `tests/unit/test_terminal_ui.py` | 8 | 欢迎界面、Session 标签重绘、新建与选择、Esc 返回、历史对话重放、工具暂停提示 |
+| CLI 与 Session | `tests/unit/test_cli.py` | 13 | 默认参数、Session 新建与切换、启动即创建 Session、重命名、历史恢复、GBK 安全输出 |
+| 终端界面 | `tests/unit/test_terminal_ui.py` | 9 | 欢迎界面、Help 对齐、Session 标签重绘、新建与选择、Esc 返回、历史对话重放、工具暂停提示 |
 | 配置加载 | `tests/unit/test_config.py` | 3 | `.env` 查找顺序、SQLite 路径固定 |
 | 上下文组装 | `tests/unit/test_context.py` | 2 | Core Prompt、中文核心规则、项目规则、Task Ledger、摘要和消息 |
 | 流式 LLM 客户端 | `tests/unit/test_streaming_llm.py` | 1 | 流式文本、原生 Function Calling 参数拼接 |

@@ -18,6 +18,7 @@ from minicode.tools.executors import create_command_executor
 class ChatCommandResult:
     should_exit: bool = False
     selected_session: object | None = None
+    renamed_session: object | None = None
 
 
 def _safe_print(value, stream=None):
@@ -106,6 +107,7 @@ def main(argv=None):
         ui = TerminalUI()
         service = _service()
         workspace = Path(args.workspace)
+        service.repositories.sessions.get_or_create(args.session, str(workspace.resolve()))
         approval_provider = getattr(ui, "approve_tool", None)
         if not args.message and approval_provider and hasattr(service, "runtime"):
             service.runtime.dispatcher.approval_provider = approval_provider
@@ -130,6 +132,9 @@ def main(argv=None):
                         workspace = Path(result.selected_session.workspace)
                         history = service.repositories.messages.list_recent(session_id, 20)
                         ui.show_active_session(os.getenv("LLM_MODEL", "unknown"), result.selected_session, history)
+                if result.renamed_session is not None:
+                    session_id = result.renamed_session.id
+                    workspace = Path(result.renamed_session.workspace)
                 continue
             try:
                 service.run(session_id, workspace, message, event_sink=ui.handle)
@@ -176,7 +181,7 @@ def _handle_chat_command(message, service, session_id, ui):
             ui.console.print(f"[red]{exc}[/]")
             return ChatCommandResult()
         ui.console.print(f"[green]Session 已重命名为：{selected.id}[/]")
-        return ChatCommandResult(selected_session=selected)
+        return ChatCommandResult(renamed_session=selected)
     else:
         ui.console.print(f"[yellow]未知命令：{message}。输入 /help 查看可用命令。[/]")
     return ChatCommandResult()

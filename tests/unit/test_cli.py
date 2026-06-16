@@ -89,7 +89,7 @@ def test_rename_command_returns_renamed_session():
     result = _handle_chat_command("/rename new-name", service, "old-name", ui)
 
     assert calls == [("old-name", "new-name")]
-    assert result.selected_session is renamed
+    assert result.renamed_session is renamed
 
 
 def test_rename_command_requires_new_name():
@@ -127,7 +127,10 @@ def test_chat_uses_selected_session_and_workspace_for_next_message(monkeypatch, 
     )
     fake_service = SimpleNamespace(
         repositories=SimpleNamespace(
-            sessions=SimpleNamespace(list=lambda: [selected]),
+            sessions=SimpleNamespace(
+                list=lambda: [selected],
+                get_or_create=lambda session_id, workspace: SimpleNamespace(id=session_id, workspace=workspace),
+            ),
             messages=SimpleNamespace(list_recent=lambda session_id, limit: history),
         ),
         run=lambda session_id, workspace, message, event_sink: calls.append(
@@ -180,12 +183,60 @@ def test_chat_creates_empty_session_in_current_workspace(monkeypatch, tmp_path: 
 
     cli.main(["chat", "--workspace", str(tmp_path), "--session", "current"])
 
-    assert len(created) == 1
-    assert created[0][1] == str(tmp_path.resolve())
-    assert created[0][0] != "current"
-    assert active_session_calls[0][1].id == created[0][0]
+    assert len(created) == 2
+    assert created[0] == ("current", str(tmp_path.resolve()))
+    assert created[1][1] == str(tmp_path.resolve())
+    assert created[1][0] != "current"
+    assert active_session_calls[0][1].id == created[1][0]
     assert active_session_calls[0][2] == []
-    assert calls == [(created[0][0], tmp_path.resolve(), "hello")]
+    assert calls == [(created[1][0], tmp_path.resolve(), "hello")]
+
+
+def test_chat_rename_persists_blank_session_before_renaming(monkeypatch, tmp_path: Path):
+    messages = iter(["/rename test1", "hello", ""])
+    created = []
+    renamed = []
+    calls = []
+    active_session_calls = []
+
+    class FakeConsole:
+        def input(self, prompt):
+            return next(messages)
+
+        def print(self, *args, **kwargs):
+            pass
+
+    def get_or_create(session_id, workspace):
+        created.append((session_id, workspace))
+        return SimpleNamespace(id=session_id, workspace=workspace)
+
+    def rename(old_id, new_id):
+        renamed.append((old_id, new_id))
+        return SimpleNamespace(id=new_id, workspace=str(tmp_path.resolve()))
+
+    fake_ui = SimpleNamespace(
+        console=FakeConsole(),
+        show_welcome=lambda *args: None,
+        show_active_session=lambda model, session, rows: active_session_calls.append((model, session, rows)),
+        handle=lambda event: None,
+        show_error=lambda error: None,
+    )
+    fake_service = SimpleNamespace(
+        repositories=SimpleNamespace(
+            sessions=SimpleNamespace(get_or_create=get_or_create, rename=rename),
+            messages=SimpleNamespace(list_recent=lambda session_id, limit: []),
+        ),
+        run=lambda session_id, workspace, message, event_sink: calls.append((session_id, workspace, message)),
+    )
+    monkeypatch.setattr(cli, "TerminalUI", lambda: fake_ui)
+    monkeypatch.setattr(cli, "_service", lambda: fake_service)
+
+    cli.main(["chat", "--workspace", str(tmp_path)])
+
+    assert len(created) == 1
+    assert renamed == [(created[0][0], "test1")]
+    assert active_session_calls == []
+    assert calls == [("test1", tmp_path.resolve(), "hello")]
 
 
 def test_new_session_id_is_unique_and_keeps_workspace_prefix(tmp_path: Path):

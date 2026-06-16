@@ -37,6 +37,31 @@ class PermissionGuard:
             return PermissionDecision(False, "Shell operators are forbidden")
         if argv[0] == "git" and (len(argv) < 2 or argv[1] not in {"status", "diff"}):
             return PermissionDecision(False, "Only git status and git diff are allowed")
-        if argv[0] in {"python", "python3"} and argv[1:] not in [["--version"], ["-m", "pytest"], ["-m", "pytest", "-q"]]:
+        if argv[0] in {"python", "python3"}:
+            if argv[1:] == ["--version"]:
+                return PermissionDecision(True)
+            if len(argv) >= 3 and argv[1:3] == ["-m", "pytest"] and _is_safe_pytest_args(argv[3:]):
+                return PermissionDecision(True)
             return PermissionDecision(False, "Python is limited to version checks and pytest")
+        if argv[0] == "pytest" and not _is_safe_pytest_args(argv[1:]):
+            return PermissionDecision(False, "pytest arguments are not allowlisted")
         return PermissionDecision(True)
+
+
+def _is_safe_pytest_args(args: list[str]) -> bool:
+    # 允许常见 pytest flag 和 Workspace 内相对测试路径；仍拒绝 shell、绝对路径和父目录穿越。
+    allowed_flags = {
+        "-q", "-v", "-x", "-s",
+        "--maxfail=1", "--tb=short", "--tb=long", "--tb=auto", "--disable-warnings",
+    }
+    for arg in args:
+        normalized = arg.replace("\\", "/")
+        if arg in allowed_flags:
+            continue
+        if normalized.startswith("-k") or normalized.startswith("-m"):
+            return False
+        if normalized.startswith("/") or ":" in normalized or ".." in normalized.split("/"):
+            return False
+        if any(part in {"", "."} for part in normalized.split("/") if normalized != "."):
+            return False
+    return True

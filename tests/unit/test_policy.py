@@ -27,6 +27,11 @@ def test_policy_allows_normal_tools_and_safe_commands():
     assert policy.before_tool("read_file", RiskLevel.READ_ONLY, {"path": "a.py"}).action == PolicyAction.ALLOW
     assert policy.before_tool("write_file", RiskLevel.WRITE, {"path": "a.py"}).action == PolicyAction.ALLOW
     assert policy.before_tool("run_command", RiskLevel.EXECUTE, {"argv": ["pytest", "-q"]}).action == PolicyAction.ALLOW
+    assert policy.before_tool(
+        "run_command",
+        RiskLevel.EXECUTE,
+        {"argv": ["python", "-m", "pytest", "workspace/demo_project/test_calculator.py", "-v"]},
+    ).action == PolicyAction.ALLOW
 
 
 def test_policy_requires_approval_for_sensitive_file_write():
@@ -52,6 +57,18 @@ def test_policy_denies_forbidden_command_without_prompting():
 
     assert decision.action == PolicyAction.DENY
     assert "allowlisted" in decision.reason.lower()
+
+
+def test_policy_still_denies_arbitrary_python_execution():
+    policy = ToolPolicy()
+
+    inline = policy.before_tool("run_command", RiskLevel.EXECUTE, {"argv": ["python", "-c", "print('x')"]})
+    script = policy.before_tool("run_command", RiskLevel.EXECUTE, {"argv": ["python", "script.py"]})
+    other_module = policy.before_tool("run_command", RiskLevel.EXECUTE, {"argv": ["python", "-m", "pip", "list"]})
+
+    assert inline.action == PolicyAction.DENY
+    assert script.action == PolicyAction.DENY
+    assert other_module.action == PolicyAction.DENY
 
 
 def test_dispatcher_only_executes_high_risk_tool_after_approval(tmp_path: Path):

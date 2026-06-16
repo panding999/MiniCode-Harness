@@ -21,6 +21,18 @@ def test_welcome_panel_contains_model_workspace_and_commands(tmp_path: Path):
     assert "/help" in output
 
 
+def test_help_panel_aligns_command_descriptions():
+    console = Console(record=True, width=100, force_terminal=False)
+    ui = TerminalUI(console)
+
+    ui.show_help()
+
+    output = console.export_text()
+    assert "/help" in output
+    assert "/rename" in output
+    assert "重命名当前 Session" in output
+
+
 def test_session_selector_selects_highlighted_session():
     sessions = [
         SimpleNamespace(id="newest", workspace="D:/newest", updated_at="now"),

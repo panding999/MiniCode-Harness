@@ -75,15 +75,17 @@ class TerminalUI:
             self.streaming = False
 
     def show_help(self):
+        commands = Table.grid(padding=(0, 2))
+        commands.add_column(style="bold bright_magenta", no_wrap=True)
+        commands.add_column()
+        commands.add_row("/help", "查看命令")
+        commands.add_row("/task", "查看当前 Task Ledger")
+        commands.add_row("/trace", "查看当前 Session Trace")
+        commands.add_row("/sessions", "查看所有 Session")
+        commands.add_row("/rename 名称", "重命名当前 Session")
+        commands.add_row("/exit", "退出")
         self.console.print(Panel(
-            Group(
-                Text("/help       查看命令"),
-                Text("/task       查看当前 Task Ledger"),
-                Text("/trace      查看当前 Session Trace"),
-                Text("/sessions   查看所有 Session"),
-                Text("/rename 名称 重命名当前 Session"),
-                Text("/exit       退出"),
-            ),
+            commands,
             title="MiniCode 命令",
             border_style="bright_magenta",
         ))
