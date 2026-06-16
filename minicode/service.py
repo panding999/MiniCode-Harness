@@ -13,6 +13,8 @@ from minicode.tools.executors import LocalRestrictedExecutor
 from minicode.tools.registry import ToolRegistry
 
 
+# Service 是依赖装配入口：把持久化、Runtime、工具、Dispatcher、策略、
+# ContextBuilder 和 Compactor 组合起来。
 DEFAULT_PROMPT = """你是 MiniCode，一个最小 Coding Agent。请使用工具获取 Workspace 事实。
 不得编造工具结果。修改已有文件前必须先读取。遵守用户明确约束。
 目标完成后简洁回答。用户要求只调查时，不得修改文件。"""

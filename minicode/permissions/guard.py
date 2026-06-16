@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+# 底层硬边界：路径限制和命令白名单都在这里。
+# 如果要找命令白名单，看下面的 allowed_commands。
 @dataclass(frozen=True)
 class PermissionDecision:
     allowed: bool
@@ -9,9 +11,11 @@ class PermissionDecision:
 
 
 class PermissionGuard:
+    # run_command 启动子进程前使用的命令白名单。
     allowed_commands = {"python", "python3", "pytest", "git"}
 
     def resolve_path(self, workspace: Path, requested: str) -> Path:
+        # 先解析真实路径，再检查是否仍在 Workspace 内，阻止 ../ 路径穿越。
         root = workspace.resolve()
         candidate = (root / requested).resolve()
         if candidate != root and root not in candidate.parents:
@@ -26,6 +30,7 @@ class PermissionGuard:
             return PermissionDecision(False, str(exc))
 
     def check_command(self, argv: list[str]) -> PermissionDecision:
+        # 这里不会打开 shell，只校验 argv 数组本身。
         if not argv or argv[0] not in self.allowed_commands:
             return PermissionDecision(False, "Command is not allowlisted")
         if any(token in {"|", ">", ">>", "<", "&&", ";"} for token in argv):

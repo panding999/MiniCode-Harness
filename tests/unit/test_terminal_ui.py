@@ -102,6 +102,28 @@ def test_show_session_history_replays_only_conversation_in_normal_chat_style(tmp
     assert "Restored Session" not in output
 
 
+def test_show_session_history_explains_tool_call_pause_without_final_answer(tmp_path: Path):
+    console = Console(record=True, width=100, force_terminal=False)
+    ui = TerminalUI(console)
+    session = SimpleNamespace(id="restored", workspace=str(tmp_path))
+    messages = [
+        SimpleNamespace(role="user", content="删除.env文件", extra_data={}),
+        SimpleNamespace(
+            role="assistant",
+            content="",
+            extra_data={"tool_calls": [{"function": {"name": "delete_file"}}]},
+        ),
+        SimpleNamespace(role="tool", content="Deleting sensitive path is forbidden", extra_data={}),
+    ]
+
+    ui.show_session_history(session, messages)
+
+    output = console.export_text()
+    assert "> 删除.env文件" in output
+    assert "MiniCode\n本轮因工具调用失败或安全策略暂停。详情请查看 /trace。" in output
+    assert "Deleting sensitive path is forbidden" not in output
+
+
 def test_show_active_session_redraws_normal_interface_with_new_label(tmp_path: Path):
     console = Console(record=True, width=100, force_terminal=False)
     ui = TerminalUI(console)

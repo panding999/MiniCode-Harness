@@ -3,10 +3,12 @@ import os
 from pathlib import Path
 
 
+# 配置采用环境变量优先，这样安装后的 CLI 可以从任意 Workspace 启动。
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def discover_env_file(cwd: Path | None = None, project_root: Path | None = None, home: Path | None = None) -> Path | None:
+    # 查找顺序：显式指定、当前 Workspace、用户级配置、开发时的 MiniCode 项目根目录。
     explicit = os.getenv("MINICODE_ENV_FILE")
     candidates = [
         Path(explicit).expanduser() if explicit else None,
@@ -18,6 +20,7 @@ def discover_env_file(cwd: Path | None = None, project_root: Path | None = None,
 
 
 def resolve_db_url(value: str, base_dir: Path) -> str:
+    # 相对 sqlite 路径锚定到 .env 所在目录，而不是进程当前目录。
     prefix = "sqlite:///"
     if not value.startswith(prefix):
         return value
@@ -28,6 +31,7 @@ def resolve_db_url(value: str, base_dir: Path) -> str:
 
 
 def load_env_file(path: Path | None = None) -> Path | None:
+    # setdefault 保证外部已经设置的环境变量优先级更高。
     env_path = path.resolve() if path else discover_env_file()
     if env_path is None:
         return None
@@ -49,6 +53,7 @@ load_env_file()
 
 @dataclass(frozen=True)
 class Settings:
+    # 上下文压缩默认值：超过 12000 字符压缩旧消息，保留最近 12 条消息和最近 5 条完整工具输出。
     db_url: str = os.getenv("MINICODE_DB_URL", "sqlite:///minicode.db")
     max_steps: int = int(os.getenv("MAX_STEPS", "8"))
     repeat_limit: int = 3

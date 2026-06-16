@@ -16,21 +16,21 @@ python -m pytest -q
 当前预期结果：
 
 ```text
-50 passed
+56 passed
 ```
 
 测试分为：
 
 | 测试范围 | 文件 | 用例数 | 主要验证内容 |
 |---|---|---:|---|
-| Agent 运行时集成测试 | `tests/integration/test_runtime.py` | 5 | Agent Loop、工具回填、SQLite 持久化、跨轮恢复、最大步数、上下文压缩、终端事件 |
+| Agent 运行时集成测试 | `tests/integration/test_runtime.py` | 7 | Agent Loop、工具回填、SQLite 持久化、Task Ledger 生命周期、Session 重命名、最大步数、上下文压缩、终端事件 |
 | 上下文压缩 | `tests/unit/test_compactor.py` | 2 | 原始历史保留、累计摘要、工具输出微压缩、Function Calling 配对 |
 | Coding Tools 与权限 | `tests/unit/test_tools.py` | 6 | 六个工具、路径限制、写前读取、命令白名单、受控删除 |
 | 权限策略与审批 | `tests/unit/test_policy.py`、`tests/unit/test_approval_ui.py` | 8 | 风险分级、敏感操作审批、用户拒绝语义 |
 | 命令执行隔离 | `tests/unit/test_executors.py` | 2 | 环境变量白名单、输出限制、Docker 隔离参数 |
 | Runtime 失败闭环 | `tests/integration/test_runtime_failures.py` | 5 | Run/Task/Trace 异常收尾、拒绝后禁止绕过 |
-| CLI 与 Session | `tests/unit/test_cli.py` | 9 | 默认参数、Session 新建与切换、历史恢复、GBK 安全输出 |
-| 终端界面 | `tests/unit/test_terminal_ui.py` | 7 | 欢迎界面、Session 标签重绘、新建与选择、Esc 返回、历史对话重放 |
+| CLI 与 Session | `tests/unit/test_cli.py` | 12 | 默认参数、Session 新建与切换、重命名、历史恢复、GBK 安全输出 |
+| 终端界面 | `tests/unit/test_terminal_ui.py` | 8 | 欢迎界面、Session 标签重绘、新建与选择、Esc 返回、历史对话重放、工具暂停提示 |
 | 配置加载 | `tests/unit/test_config.py` | 3 | `.env` 查找顺序、SQLite 路径固定 |
 | 上下文组装 | `tests/unit/test_context.py` | 2 | Core Prompt、中文核心规则、项目规则、Task Ledger、摘要和消息 |
 | 流式 LLM 客户端 | `tests/unit/test_streaming_llm.py` | 1 | 流式文本、原生 Function Calling 参数拼接 |
@@ -108,9 +108,9 @@ Session ID：demo
 - 任务状态变为 `paused`；
 - 返回原因包含 `maximum`。
 
-### 2.3 完成任务后的跨轮记忆
+### 2.3 completed 后新输入创建新 Task Ledger
 
-测试：`test_follow_up_after_completed_task_recalls_previous_ledger`
+测试：`test_follow_up_after_completed_task_creates_new_ledger`
 
 测试数据：
 
@@ -122,10 +122,30 @@ Session ID：demo
 
 验证内容：
 
-- 第一轮完成后 Task Ledger 被保存在 SQLite；
-- 第二轮重新创建 Service 后，系统提示词仍包含第一轮目标 `fix the original bug`。
+- 第一轮完成后 Task Ledger 被标记为 `completed`；
+- 第二轮重新创建 Service 后，新输入会创建新的 Task Ledger；
+- 新 Task Ledger 的 goal 为 `what changed?`，不会继续复用已完成任务。
 
-### 2.4 运行时终端事件
+### 2.4 paused 后继续恢复同一个 Task Ledger
+
+测试：`test_follow_up_after_paused_task_resumes_same_ledger`
+
+测试数据：
+
+```text
+第一轮输入：only investigate the bug
+第一轮状态：paused
+第二轮输入：continue and fix it
+Session ID：demo
+```
+
+验证内容：
+
+- 第一轮 paused 后 Task Ledger 保留原始 goal；
+- 第二轮继续同一个 Session 时恢复同一个 Task Ledger；
+- 恢复时系统提示词仍包含原始 paused 任务目标。
+
+### 2.5 运行时终端事件
 
 测试：`test_runtime_emits_thinking_tool_and_final_events`
 
@@ -150,7 +170,7 @@ run_finished
 
 验证内容：终端能够显示思考状态、工具执行状态和流式最终回答。
 
-### 2.5 Runtime 使用压缩后的上下文
+### 2.6 Runtime 使用压缩后的上下文
 
 测试：`test_runtime_uses_summary_and_recent_messages_after_compaction`
 
@@ -282,7 +302,7 @@ rm -rf .
 python -m pytest tests/unit/test_cli.py -q
 ```
 
-预期：`10 passed`。
+预期：`12 passed`。
 
 | 测试 | 测试数据或样例 | 验证内容 |
 |---|---|---|
@@ -292,6 +312,8 @@ python -m pytest tests/unit/test_cli.py -q
 | `test_explicit_session_still_resumes_named_session` | `chat --workspace ... --session existing` | 显式指定 Session 时仍然恢复该 Session |
 | `test_sessions_command_returns_selected_session` | 当前 Session=`current`，选择=`other` | `/sessions` 返回选中的 Session |
 | `test_sessions_command_preserves_session_when_selector_is_cancelled` | 选择器返回 `None` | Esc/取消后不切换 Session |
+| `test_rename_command_returns_renamed_session` | 当前 Session=`old-name`，新名称=`new-name` | `/rename` 调用仓储重命名并返回新的活动 Session |
+| `test_rename_command_requires_new_name` | 输入 `/rename` | 缺少新名称时提示正确用法 |
 | `test_chat_uses_selected_session_and_workspace_for_next_message` | 选择 `other` 后输入 `hello` | 下一条消息使用新 Session、新 Workspace，并加载历史 |
 | `test_chat_creates_empty_session_in_current_workspace` | 在 `/sessions` 选择 New 后输入 `hello` | 立即创建 SQLite Session，并让下一条消息进入新会话 |
 | `test_new_session_id_is_unique_and_keeps_workspace_prefix` | 为同一 Workspace 连续生成两个 ID | 新 Session ID 保留 Workspace 前缀且不会重复 |

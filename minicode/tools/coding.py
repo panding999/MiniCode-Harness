@@ -10,6 +10,7 @@ from minicode.tools.base import BaseTool, RiskLevel, ToolContext, ToolResult
 from minicode.tools.executors import LocalRestrictedExecutor
 
 
+# 暴露给 LLM 的具体 coding 工具。每个工具都会校验参数、解析 Workspace 路径并返回结构化 ToolResult。
 def _result(start: float, success: bool, output: str = "", error: str = "", metadata: dict | None = None):
     summary = (output or error)[:500]
     return ToolResult(success, output, summary, error, metadata or {}, int((time.monotonic() - start) * 1000))
@@ -111,6 +112,7 @@ class WriteFileTool(BaseTool):
             data = _validate(self.args_model, args)
             relative = Path(data.path).as_posix()
             path = PermissionGuard().resolve_path(context.workspace, data.path)
+            # 修改已有文件前必须先 read_file，避免 agent 在没看过内容时盲目覆盖。
             if path.exists() and relative not in context.files_read:
                 return _result(start, False, error="File must be read before writing")
             before = path.read_text(encoding="utf-8") if path.exists() else ""
@@ -159,6 +161,7 @@ class RunCommandTool(BaseTool):
         start = time.monotonic()
         try:
             data = _validate(self.args_model, args)
+            # 命令白名单和 shell 操作符检查集中在 PermissionGuard.check_command。
             decision = PermissionGuard().check_command(data.argv)
             if not decision.allowed:
                 return _result(start, False, error=decision.reason)

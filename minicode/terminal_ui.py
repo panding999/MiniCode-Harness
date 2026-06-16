@@ -13,6 +13,7 @@ from rich.table import Table
 from rich.text import Text
 
 
+# Rich/prompt-toolkit 终端适配层。Runtime 发事件，这个类决定如何在交互式 CLI 展示。
 @dataclass(frozen=True)
 class NewSessionRequest:
     pass
@@ -38,6 +39,7 @@ class TerminalUI:
         commands.add_row("/help", "查看可用命令")
         commands.add_row("/task", "查看当前任务")
         commands.add_row("/trace", "查看执行记录")
+        commands.add_row("/rename", "重命名当前 Session")
         commands.add_row("/exit", "退出 MiniCode")
 
         body = Table.grid(expand=True)
@@ -79,6 +81,7 @@ class TerminalUI:
                 Text("/task       查看当前 Task Ledger"),
                 Text("/trace      查看当前 Session Trace"),
                 Text("/sessions   查看所有 Session"),
+                Text("/rename 名称 重命名当前 Session"),
                 Text("/exit       退出"),
             ),
             title="MiniCode 命令",
@@ -91,6 +94,7 @@ class TerminalUI:
         self.console.print(Panel(str(error), title="请求失败", border_style="red"))
 
     def approve_tool(self, decision, call, input_func=None) -> bool:
+        # 注入 ToolDispatcher 的人工审批钩子，仅交互式运行使用。
         visible_arguments = {key: value for key, value in call.arguments.items() if key != "content"}
         body = (
             f"工具: {call.name}\n"
@@ -113,14 +117,23 @@ class TerminalUI:
     def show_session_history(self, session, messages):
         self._stop_status()
         self.streaming = False
+        pending_tool_pause = False
         for message in messages:
-            if message.role not in {"user", "assistant"} or not message.content.strip():
+            if message.role not in {"user", "assistant"}:
                 continue
             if message.role == "user":
                 self.console.print(f"\n[bold]> [/]{message.content}", markup=True, highlight=False)
-            else:
+                continue
+            if (getattr(message, "extra_data", {}) or {}).get("tool_calls") and not message.content.strip():
+                pending_tool_pause = True
+                continue
+            if message.content.strip():
+                pending_tool_pause = False
                 self.console.print("\n[bold bright_cyan]MiniCode[/]")
                 self.console.print(message.content, markup=False, highlight=False)
+        if pending_tool_pause:
+            self.console.print("\n[bold bright_cyan]MiniCode[/]")
+            self.console.print("本轮因工具调用失败或安全策略暂停。详情请查看 /trace。", markup=False, highlight=False)
 
     def show_active_session(self, model: str, session, messages):
         self._stop_status()
@@ -130,6 +143,7 @@ class TerminalUI:
         self.show_session_history(session, messages)
 
     def select_session(self, sessions, current_session_id: str, input=None, output=None):
+        # 全屏 Session 选择器，用于显式恢复历史或创建空白会话。
         entries = [NewSessionRequest(), *sessions]
         selected_index = next(
             (index for index, session in enumerate(entries) if getattr(session, "id", None) == current_session_id),

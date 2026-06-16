@@ -13,6 +13,7 @@ from minicode.terminal_ui import NewSessionRequest, TerminalUI
 from minicode.tools.executors import create_command_executor
 
 
+# CLI 入口：解析命令，维护当前 Session/Workspace，并把终端事件接到 Runtime。
 @dataclass
 class ChatCommandResult:
     should_exit: bool = False
@@ -41,17 +42,20 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def default_session_id(workspace: Path) -> str:
+    # 历史稳定 ID 辅助函数；普通聊天现在默认用 new_session_id，除非用户显式传 --session。
     resolved = str(workspace.resolve())
     digest = hashlib.sha256(resolved.lower().encode("utf-8")).hexdigest()[:10]
     return f"{workspace.resolve().name.lower().replace(' ', '-')}-{digest}"
 
 
 def new_session_id(workspace: Path) -> str:
+    # 新交互会话默认空白开始；恢复历史必须显式选择。
     prefix = workspace.resolve().name.lower().replace(" ", "-")
     return f"{prefix}-{uuid4().hex[:10]}"
 
 
 def normalize_args(args, cwd: Path | None = None):
+    # 默认命令在这里归一化，测试无需构造完整 service/runtime 也能验证 CLI 行为。
     workspace = (cwd or Path.cwd()).resolve()
     if args.command is None:
         args.command = "chat"
@@ -68,6 +72,7 @@ def normalize_args(args, cwd: Path | None = None):
 
 
 def _service() -> AgentService:
+    # CLI 启动时根据环境配置装配 Runtime 依赖；测试会 monkeypatch 这里避免真实 API 调用。
     settings = Settings()
     key = os.getenv("LLM_API_KEY")
     model = os.getenv("LLM_MODEL")
@@ -145,6 +150,7 @@ def main(argv=None):
 
 
 def _handle_chat_command(message, service, session_id, ui):
+    # 斜杠命令用于查看或切换持久化状态；普通文本交给主循环里的 AgentRuntime.run。
     command = message.lower().split()[0]
     if command in {"/exit", "/quit"}:
         return ChatCommandResult(should_exit=True)
@@ -158,6 +164,18 @@ def _handle_chat_command(message, service, session_id, ui):
             ui.console.print(f"{row.step_number:02d} {row.event_type:12} {row.tool_name or '-':14} {'[green]ok[/]' if row.success else '[red]fail[/]'} {row.output_summary}")
     elif command == "/sessions":
         selected = ui.select_session(service.repositories.sessions.list(), session_id)
+        return ChatCommandResult(selected_session=selected)
+    elif command == "/rename":
+        parts = message.split(maxsplit=1)
+        if len(parts) < 2 or not parts[1].strip():
+            ui.console.print("[yellow]用法：/rename new-session-name[/]")
+            return ChatCommandResult()
+        try:
+            selected = service.repositories.sessions.rename(session_id, parts[1].strip())
+        except ValueError as exc:
+            ui.console.print(f"[red]{exc}[/]")
+            return ChatCommandResult()
+        ui.console.print(f"[green]Session 已重命名为：{selected.id}[/]")
         return ChatCommandResult(selected_session=selected)
     else:
         ui.console.print(f"[yellow]未知命令：{message}。输入 /help 查看可用命令。[/]")

@@ -3,6 +3,7 @@ from collections import deque
 from minicode.runtime.models import LLMResponse
 
 
+# 确定性的测试替身，让 Runtime 测试无需网络和 API 费用也能验证编排逻辑。
 class FakeLLMClient:
     def __init__(self, responses: list[LLMResponse]):
         self.responses = deque(responses)

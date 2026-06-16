@@ -75,6 +75,34 @@ def test_sessions_command_preserves_session_when_selector_is_cancelled():
     assert result.should_exit is False
 
 
+def test_rename_command_returns_renamed_session():
+    renamed = SimpleNamespace(id="new-name", workspace="D:/workspace")
+    calls = []
+    service = SimpleNamespace(
+        repositories=SimpleNamespace(
+            sessions=SimpleNamespace(rename=lambda old, new: calls.append((old, new)) or renamed),
+            messages=SimpleNamespace(list_recent=lambda session_id, limit: []),
+        )
+    )
+    ui = SimpleNamespace(console=SimpleNamespace(print=lambda *args, **kwargs: None))
+
+    result = _handle_chat_command("/rename new-name", service, "old-name", ui)
+
+    assert calls == [("old-name", "new-name")]
+    assert result.selected_session is renamed
+
+
+def test_rename_command_requires_new_name():
+    printed = []
+    service = SimpleNamespace(repositories=SimpleNamespace())
+    ui = SimpleNamespace(console=SimpleNamespace(print=lambda value, *args, **kwargs: printed.append(value)))
+
+    result = _handle_chat_command("/rename", service, "old-name", ui)
+
+    assert result.selected_session is None
+    assert any("用法" in str(value) for value in printed)
+
+
 def test_chat_uses_selected_session_and_workspace_for_next_message(monkeypatch, tmp_path: Path):
     selected = SimpleNamespace(id="other", workspace=str(tmp_path / "other"))
     history = [SimpleNamespace(role="user", content="old message")]

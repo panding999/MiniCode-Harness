@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel
 
 
+# 工具共享契约。具体工具声明风险等级和 Pydantic 参数模型，schema 直接导出给 Function Calling。
 class RiskLevel(str, Enum):
     READ_ONLY = "read_only"
     WRITE = "write"

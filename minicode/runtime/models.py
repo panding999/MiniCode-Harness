@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+# Runtime 数据对象，供 LLM 适配器、工具、UI 事件和测试共用。
 @dataclass
 class ToolCall:
     id: str
