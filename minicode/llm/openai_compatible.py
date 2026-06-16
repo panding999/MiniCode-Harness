@@ -5,12 +5,14 @@ from openai import OpenAI
 from minicode.runtime.models import LLMResponse, ToolCall
 
 
+# OpenAI-compatible 流式适配器。它把文本增量和 tool_call 片段合并成 Runtime 使用的 LLMResponse。
 class OpenAICompatibleClient:
     def __init__(self, api_key: str, model: str, base_url: str | None = None):
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.model = model
 
     def complete(self, messages: list[dict], tools: list[dict], on_text_delta=None) -> LLMResponse:
+        # stream=True 用于终端实时输出，同时仍会收集完整工具调用供 Runtime 执行。
         stream = self.client.chat.completions.create(
             model=self.model,
             messages=messages,

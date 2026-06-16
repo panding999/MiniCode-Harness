@@ -6,6 +6,7 @@ from minicode.permissions.guard import PermissionGuard
 from minicode.tools.base import RiskLevel
 
 
+# 风险策略层：工具执行前决定允许、拒绝或需要人工审批。
 class PolicyAction(str, Enum):
     ALLOW = "allow"
     DENY = "deny"
@@ -19,10 +20,12 @@ class PolicyDecision:
 
 
 class ToolPolicy:
+    # 敏感路径规则在这里；路径是否越界的硬检查在 guard.py。
     sensitive_names = {".env", ".env.local", ".env.production", "credentials.json"}
     sensitive_suffixes = {".pem", ".key"}
 
     def before_tool(self, tool_name: str, risk_level: RiskLevel, arguments: dict) -> PolicyDecision:
+        # 只读工具可自动执行；写入、删除和命令会结合工具风险和具体参数分类。
         if risk_level == RiskLevel.READ_ONLY:
             return PolicyDecision(PolicyAction.ALLOW, "Read-only tool")
 

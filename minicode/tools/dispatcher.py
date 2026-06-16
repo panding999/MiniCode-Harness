@@ -4,6 +4,7 @@ from minicode.tools.base import ToolContext, ToolResult
 from minicode.tools.registry import ToolRegistry
 
 
+# 所有工具调用的统一入口：查找工具、权限策略、可选审批、执行工具并记录策略元数据。
 class ToolDispatcher:
     def __init__(self, registry: ToolRegistry, policy=None, approval_provider=None):
         self.registry = registry

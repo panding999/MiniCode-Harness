@@ -45,19 +45,64 @@ def test_max_steps_pauses_task(tmp_path: Path):
     assert "maximum" in result.text.lower()
 
 
-def test_follow_up_after_completed_task_recalls_previous_ledger(tmp_path: Path):
+def test_follow_up_after_completed_task_creates_new_ledger(tmp_path: Path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     db_url = f"sqlite:///{tmp_path / 'state.db'}"
     first = AgentService.create(db_url=db_url, llm=FakeLLMClient([LLMResponse(text="done")]))
     first.run("demo", workspace, "fix the original bug")
+    first_task = first.repositories.tasks.get_current("demo")
 
     llm = FakeLLMClient([LLMResponse(text="summary")])
     second = AgentService.create(db_url=db_url, llm=llm)
     second.run("demo", workspace, "what changed?")
 
+    second_task = second.repositories.tasks.get_current("demo")
     system_prompt = llm.requests[0][0]["content"]
-    assert "fix the original bug" in system_prompt
+    assert second_task.id != first_task.id
+    assert second_task.goal == "what changed?"
+    assert '"goal": "what changed?"' in system_prompt
+
+
+def test_follow_up_after_paused_task_resumes_same_ledger(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    db_url = f"sqlite:///{tmp_path / 'state.db'}"
+    first = AgentService.create(
+        db_url=db_url,
+        llm=FakeLLMClient([LLMResponse(text="need user follow-up", task_status="paused")]),
+    )
+    first.run("demo", workspace, "only investigate the bug")
+    first_task = first.repositories.tasks.get_current("demo")
+
+    llm = FakeLLMClient([LLMResponse(text="resumed")])
+    second = AgentService.create(db_url=db_url, llm=llm)
+    second.run("demo", workspace, "continue and fix it")
+
+    second_task = second.repositories.tasks.get_current("demo")
+    system_prompt = llm.requests[0][0]["content"]
+    assert second_task.id == first_task.id
+    assert second_task.goal == "only investigate the bug"
+    assert '"goal": "only investigate the bug"' in system_prompt
+
+
+def test_session_rename_updates_related_records(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    service = AgentService.create(
+        db_url=f"sqlite:///{tmp_path / 'state.db'}",
+        llm=FakeLLMClient([LLMResponse(text="done")]),
+    )
+    service.run("old-name", workspace, "first task")
+
+    renamed = service.repositories.sessions.rename("old-name", "new-name")
+
+    assert renamed.id == "new-name"
+    assert service.repositories.sessions.get("old-name") is None
+    assert service.repositories.messages.count("new-name") == 2
+    assert service.repositories.tasks.get_current("new-name").goal == "first task"
+    assert service.repositories.traces.latest_run("new-name") is not None
+    assert service.repositories.traces.list_for_session("new-name")
 
 
 def test_runtime_emits_thinking_tool_and_final_events(tmp_path: Path):

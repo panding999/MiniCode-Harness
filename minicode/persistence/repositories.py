@@ -7,11 +7,13 @@ from sqlalchemy import select
 from minicode.persistence.models import MessageRecord, RunRecord, SessionRecord, TaskRecord, TraceEventRecord
 
 
+# Repository 层把 SQLAlchemy 查询隔离在 Runtime 之外，也方便测试使用内存 SQLite。
 class SessionRepository:
     def __init__(self, factory): self.factory = factory
     def get(self, session_id):
         with self.factory() as db: return db.get(SessionRecord, session_id)
     def get_or_create(self, session_id, workspace):
+        # 同一个 Session 不能复用到不同 Workspace，避免把历史上下文套到错误项目。
         with self.factory() as db:
             row = db.get(SessionRecord, session_id)
             if not row:
@@ -25,6 +27,23 @@ class SessionRepository:
     def update_summary(self, session_id, summary):
         with self.factory() as db:
             row = db.get(SessionRecord, session_id); row.summary = summary; db.commit()
+    def rename(self, old_id, new_id):
+        # Session ID 是主键，重命名时必须同步所有关联表的 session_id。
+        new_id = str(new_id).strip()
+        if not new_id:
+            raise ValueError("New session name cannot be empty")
+        with self.factory() as db:
+            row = db.get(SessionRecord, old_id)
+            if row is None:
+                raise ValueError(f"Session not found: {old_id}")
+            if db.get(SessionRecord, new_id) is not None:
+                raise ValueError(f"Session already exists: {new_id}")
+            for model in [MessageRecord, TaskRecord, RunRecord, TraceEventRecord]:
+                for related in db.scalars(select(model).where(model.session_id == old_id)):
+                    related.session_id = new_id
+            row.id = new_id
+            row.updated_at = datetime.utcnow()
+            db.commit(); db.refresh(row); return row
 
 
 class MessageRepository:
@@ -54,11 +73,14 @@ class TaskRepository:
         with self.factory() as db:
             return db.scalar(select(TaskRecord).where(TaskRecord.session_id == session_id).order_by(TaskRecord.id.desc()).limit(1))
     def get_or_create(self, session_id, goal):
+        # active 任务继续使用；paused 任务恢复为 active；completed/failed 后的新输入创建新任务。
         row = self.get_current(session_id)
         if row:
             if row.status == "paused":
                 self.update(row.id, status="active")
-            return self.get_current(session_id)
+                return self.get_current(session_id)
+            if row.status not in {"completed", "failed"}:
+                return row
         with self.factory() as db:
             row = TaskRecord(session_id=session_id, goal=goal)
             db.add(row); db.commit(); db.refresh(row); return row

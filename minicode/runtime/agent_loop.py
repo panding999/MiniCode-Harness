@@ -6,6 +6,8 @@ from minicode.runtime.models import AgentResult, RuntimeEvent
 from minicode.tools.base import ToolContext
 
 
+# 核心 Agent Loop：构建上下文、调用 LLM、执行工具、持久化 Observation，
+# 直到最终回答或安全停止条件触发。
 class AgentRuntime:
     def __init__(self, llm, repositories, context_builder, dispatcher, registry, compactor, max_steps=8, repeat_limit=3):
         self.llm = llm
@@ -23,6 +25,7 @@ class AgentRuntime:
         session = self.repositories.sessions.get_or_create(session_id, str(workspace))
         self.repositories.messages.add(session_id, "user", user_input)
         task = self.repositories.tasks.get_or_create(session_id, user_input)
+        # 每次请求 LLM 前先尝试压缩，避免 prompt 超过配置的字符预算。
         self.compactor.compact_if_needed(session_id)
         run_id = self.repositories.traces.start_run(session_id)
         tool_context = ToolContext(workspace, set(task.files_read or []))
@@ -34,6 +37,7 @@ class AgentRuntime:
                 session = self.repositories.sessions.get(session_id)
                 recent = self.compactor.context_messages(session_id)
                 summary = self.compactor.summary_for_context(session_id)
+                # 每次调用 LLM 前重新召回 Memory/Task 状态，确保上一轮工具 Observation 可见。
                 context = self.context_builder.build(workspace, task, summary, recent)
                 emit(RuntimeEvent("thinking_started", step=step))
                 streamed = False
@@ -89,6 +93,7 @@ class AgentRuntime:
                         arguments=call.arguments, success=result.success, output_summary=result.output_summary,
                         error=result.error, duration_ms=result.duration_ms,
                     )
+                    # Task Ledger 根据客观工具结果更新，而不是根据模型自然语言自述更新。
                     task = self._record_task_result(task.id, task, call.name, result, tool_context)
                     if (
                         result.metadata.get("policy_action") == "require_approval"
@@ -128,6 +133,7 @@ class AgentRuntime:
         return AgentResult(reason, "paused", run_id)
 
     def _record_task_result(self, task_id, task, name, result, context):
+        # 文件、命令、测试结果和 last_error 的 Task Ledger 更新入口。
         values = {"files_read": sorted(context.files_read)}
         if name == "write_file" and result.success:
             values["files_changed"] = _append_unique(task.files_changed, result.metadata.get("path"))

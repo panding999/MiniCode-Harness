@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+# 默认只把这些环境变量传给子进程。
 DEFAULT_ENV_ALLOWLIST = ("PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP")
 
 
@@ -15,12 +16,14 @@ class CommandExecution:
 
 
 class LocalRestrictedExecutor:
+    # 本地执行器有安全限制，但不是完整的操作系统级沙箱。
     def __init__(self, env_allowlist=DEFAULT_ENV_ALLOWLIST, output_limit=30_000, runner=None):
         self.env_allowlist = tuple(env_allowlist)
         self.output_limit = output_limit
         self.runner = runner or subprocess.run
 
     def execute(self, argv: list[str], workspace: Path, timeout_seconds: int) -> CommandExecution:
+        # shell=False 是安全模型的一部分；调用执行器前 argv 已经由 PermissionGuard 检查。
         environment = {key: os.environ[key] for key in self.env_allowlist if key in os.environ}
         completed = self.runner(
             argv,
@@ -35,6 +38,7 @@ class LocalRestrictedExecutor:
 
 
 class DockerExecutor:
+    # 可选的更强命令隔离；Docker 失败时不会静默降级成本地执行。
     def __init__(
         self,
         image: str,
@@ -80,6 +84,7 @@ class DockerExecutor:
 
 
 def create_command_executor(mode="local", **options):
+    # Settings.COMMAND_EXECUTOR 使用的执行器配置开关。
     if mode == "local":
         return LocalRestrictedExecutor(
             env_allowlist=options.get("env_allowlist", DEFAULT_ENV_ALLOWLIST),

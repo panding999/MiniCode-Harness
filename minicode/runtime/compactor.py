@@ -1,6 +1,7 @@
 import re
 
 
+# 两层上下文压缩：旧消息进入累计摘要，旧工具输出替换为占位符。
 SUMMARY_MARKER = "<!-- compacted-through:{message_id} -->"
 SUMMARY_MARKER_PATTERN = re.compile(r"<!-- compacted-through:(\d+) -->")
 
@@ -21,6 +22,7 @@ class Compactor:
         self.max_summary_chars = max_summary_chars
 
     def compact_if_needed(self, session_id: str):
+        # 只有未压缩消息内容超过 char_limit 时才触发累计摘要。
         session = self.repositories.sessions.get(session_id)
         compacted_through = _compacted_through(session.summary)
         pending = self.repositories.messages.list_after(session_id, compacted_through)
@@ -41,6 +43,7 @@ class Compactor:
         self.repositories.sessions.update_summary(session_id, summary)
 
     def context_messages(self, session_id: str) -> list[dict]:
+        # 旧工具输出会替换为占位符，同时保持 Function Calling 消息链合法。
         session = self.repositories.sessions.get(session_id)
         compacted_through = _compacted_through(session.summary)
         rows = self.repositories.messages.list_after(session_id, compacted_through)

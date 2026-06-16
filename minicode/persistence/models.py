@@ -7,11 +7,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 from minicode.persistence.database import Base
 
 
+# 持久化 Agent 状态的数据表：sessions、messages、tasks、runs 和 trace_events。
 def now() -> datetime:
     return datetime.utcnow()
 
 
 class SessionRecord(Base):
+    # 一个聊天 Session 绑定一个 Workspace。
     __tablename__ = "sessions"
     id: Mapped[str] = mapped_column(String, primary_key=True)
     workspace: Mapped[str] = mapped_column(Text)
@@ -21,6 +23,8 @@ class SessionRecord(Base):
 
 
 class MessageRecord(Base):
+    # 保存原始 user/assistant/tool 消息。extra_data 保存 assistant tool_calls，
+    # 以便重建 Function Calling 消息链。
     __tablename__ = "messages"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(ForeignKey("sessions.id"), index=True)
@@ -32,6 +36,7 @@ class MessageRecord(Base):
 
 
 class TaskRecord(Base):
+    # 结构化 Task Ledger，可跨轮次和跨进程恢复。
     __tablename__ = "tasks"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(ForeignKey("sessions.id"), index=True)
@@ -50,6 +55,7 @@ class TaskRecord(Base):
 
 
 class RunRecord(Base):
+    # 一次 Runtime 调用；trace_events 通过 run_id 挂在它下面。
     __tablename__ = "runs"
     id: Mapped[str] = mapped_column(String, primary_key=True)
     session_id: Mapped[str] = mapped_column(ForeignKey("sessions.id"), index=True)
@@ -59,6 +65,7 @@ class RunRecord(Base):
 
 
 class TraceEventRecord(Base):
+    # 审计轨迹：记录 LLM 响应、工具结果、策略决策、暂停和失败。
     __tablename__ = "trace_events"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
