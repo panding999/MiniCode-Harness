@@ -43,7 +43,7 @@ python -m pytest workspace/demo_project -q
 
 ```powershell
 cd workspace/demo_project
-minicode
+minicode chat --session demo
 ```
 
 输入：
@@ -74,7 +74,7 @@ minicode
 重新运行：
 
 ```powershell
-minicode
+minicode chat --session demo
 ```
 
 输入：
@@ -123,6 +123,6 @@ python -m pytest workspace/demo_project -q
 
 - 不展示 `.env` 和真实 API Key；
 - 保留终端中的工具调用与 Trace，证明 Runtime 确实执行了工具；
-- 第一轮结束后退出并重新启动，证明跨进程 Session 恢复；
+- 第一轮结束后退出并使用同一个 `--session demo` 重新启动，证明跨进程 Session 恢复；
 - 不剪掉关键工具调用过程；
 - 最终在 PR 描述中附上录屏链接。

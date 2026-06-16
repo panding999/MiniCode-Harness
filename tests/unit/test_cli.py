@@ -25,13 +25,25 @@ def test_no_arguments_defaults_to_chat_in_current_workspace(tmp_path: Path):
     args = normalize_args(build_parser().parse_args([]), tmp_path)
     assert args.command == "chat"
     assert args.workspace == str(tmp_path.resolve())
-    assert args.session == default_session_id(tmp_path)
+    assert args.session.startswith(f"{tmp_path.name.lower()}-")
+    assert args.session != default_session_id(tmp_path)
 
 
 def test_task_and_trace_default_to_current_workspace_session(tmp_path: Path):
     for command in ["task", "trace"]:
         args = normalize_args(build_parser().parse_args([command]), tmp_path)
-        assert args.session == default_session_id(tmp_path)
+        assert args.session.startswith(f"{tmp_path.name.lower()}-")
+        assert args.session != default_session_id(tmp_path)
+
+
+def test_explicit_session_still_resumes_named_session(tmp_path: Path):
+    args = normalize_args(
+        build_parser().parse_args(["chat", "--workspace", str(tmp_path), "--session", "existing"]),
+        Path("D:/elsewhere"),
+    )
+
+    assert args.workspace == str(tmp_path.resolve())
+    assert args.session == "existing"
 
 
 def test_sessions_command_returns_selected_session():
