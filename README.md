@@ -1,10 +1,14 @@
 # MiniCode Harness
 
+代码链接：[panding999/MiniCode-Harness](https://github.com/panding999/MiniCode-Harness)
+
+终端操作录屏：[recordings/minicode-demo.mp4](recordings/minicode-demo.mp4)
+
+AI Prompt 与问题解决记录：[AI_NOTES.md](AI_NOTES.md)
+
 MiniCode Harness 是一个自主实现的最小 Coding Agent Runtime。它通过 OpenAI-compatible LLM 和原生 Function Calling 调用模型，但自行实现 Agent Loop、上下文组装、工具系统、权限检查、持久化、任务恢复与执行 Trace。
 
 项目不使用 LangChain、LangGraph、OpenHands、CrewAI、AutoGen 或其他现成 Agent Runtime。
-
-代码仓库：[panding999/MiniCode-Harness](https://github.com/panding999/MiniCode-Harness)
 
 ## 运行方式
 
