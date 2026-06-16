@@ -282,13 +282,14 @@ rm -rf .
 python -m pytest tests/unit/test_cli.py -q
 ```
 
-预期：`9 passed`。
+预期：`10 passed`。
 
 | 测试 | 测试数据或样例 | 验证内容 |
 |---|---|---|
 | `test_cli_help_lists_core_commands` | CLI 帮助文本 | 包含 `chat`、`trace`、`task`、`sessions` |
-| `test_no_arguments_defaults_to_chat_in_current_workspace` | 无命令行参数、临时目录 | 默认进入聊天，Workspace 为当前目录，并生成稳定 Session ID |
-| `test_task_and_trace_default_to_current_workspace_session` | `task`、`trace` 未指定 Session | 自动使用当前 Workspace 对应 Session |
+| `test_no_arguments_defaults_to_chat_in_current_workspace` | 无命令行参数、临时目录 | 默认进入聊天，Workspace 为当前目录，并生成新的空白 Session ID |
+| `test_task_and_trace_default_to_current_workspace_session` | `task`、`trace` 未指定 Session | 自动使用新的空白 Session，因此初始结果为空 |
+| `test_explicit_session_still_resumes_named_session` | `chat --workspace ... --session existing` | 显式指定 Session 时仍然恢复该 Session |
 | `test_sessions_command_returns_selected_session` | 当前 Session=`current`，选择=`other` | `/sessions` 返回选中的 Session |
 | `test_sessions_command_preserves_session_when_selector_is_cancelled` | 选择器返回 `None` | Esc/取消后不切换 Session |
 | `test_chat_uses_selected_session_and_workspace_for_next_message` | 选择 `other` 后输入 `hello` | 下一条消息使用新 Session、新 Workspace，并加载历史 |

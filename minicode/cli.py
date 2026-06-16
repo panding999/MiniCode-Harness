@@ -56,14 +56,14 @@ def normalize_args(args, cwd: Path | None = None):
     if args.command is None:
         args.command = "chat"
         args.workspace = str(workspace)
-        args.session = default_session_id(workspace)
+        args.session = new_session_id(workspace)
         args.message = None
     elif args.command == "chat":
         selected = Path(args.workspace).resolve() if args.workspace else workspace
         args.workspace = str(selected)
-        args.session = args.session or default_session_id(selected)
+        args.session = args.session or new_session_id(selected)
     elif args.command in {"task", "trace"}:
-        args.session = args.session or default_session_id(workspace)
+        args.session = args.session or new_session_id(workspace)
     return args
 
 
